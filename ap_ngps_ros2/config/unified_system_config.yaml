@@ -1,0 +1,47 @@
+input_topics:
+  camera: "/camera/image_raw"
+  imu: "/imu/data"
+
+ngps_topics:
+  input: "/camera/image_raw"
+  output: "/odometry/vps"
+
+vips_topics:
+  input:
+    camera: "/camera/image_raw"
+    imu: "/imu/data"
+  output:
+    odometry: "/odometry/vio"
+    path: "/vips/path"
+    pose: "/vips/pose"
+
+ukf_topics:
+  input:
+    imu: "/imu/data"
+    vio: "/odometry/vio"
+    vps: "/odometry/vps"
+  output:
+    fused_odometry: "/fused/odometry"
+
+frequencies:
+  camera: "30 Hz"
+  imu: "100-200 Hz"
+  vips: "10 Hz"
+  ngps: "1-2 Hz"
+  ukf: "10 Hz"
+
+config_files:
+  ngps: "ap_ngps_ros2/config/ngps_config.yaml"
+  vips: "vins/config/high_alt/high_alt_mono_imu_config.yaml"
+  ukf: "ap_ukf/params/estimator_config.yaml"
+
+launch_command: "ros2 launch ap_ngps_ros2 unified_localization_simple.launch.py"
+launch_with_reference: "ros2 launch ap_ngps_ros2 unified_localization_simple.launch.py reference_image_path:=/path/to/reference.jpg"
+launch_with_camera: "ros2 launch ap_ngps_ros2 unified_localization_simple.launch.py camera_topic:=/my_camera/image_raw"
+launch_sim_time: "ros2 launch ap_ngps_ros2 unified_localization_simple.launch.py use_sim_time:=true"
+
+check_nodes: "ros2 node list | grep -E '(ngps_localization_node|vips_node|fusion_ros)'"
+monitor_frequencies: "ros2 topic hz /fused/odometry /odometry/vio /odometry/vps /imu/data"
+view_odometry: "ros2 topic echo /fused/odometry"
+view_vio: "ros2 topic echo /odometry/vio"
+view_vps: "ros2 topic echo /odometry/vps"

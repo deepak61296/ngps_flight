@@ -1,0 +1,19 @@
+ngps_localization_node:
+  ros__parameters:
+    reference_image_path: ""
+    camera_topic: "/camera/image_raw"
+    kernel_size: 300
+    match_threshold: 0.5
+    min_matches: 20
+    initial_base_x: 1024
+    initial_base_y: 712
+    max_rotation_change: 30.0
+    rotation_std_threshold: 15.0
+    max_rotation_history: 10
+    enable_rotation_smoothing: true
+    enable_rotation_validation: true
+    frame_id: "map"
+    publish_debug_images: true
+    debug_image_topic: "/ngps/debug_image"
+    enable_gpu: true
+    max_keypoints: 2048
