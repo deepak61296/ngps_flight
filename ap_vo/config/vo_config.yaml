@@ -1,0 +1,7 @@
+vo_node:
+  ros__parameters:
+    confidence_threshold: 0.7
+    min_matches: 30
+    camera_topic: "/camera/image_raw"
+    camera_info_topic: "/camera/camera_info"
+    output_frame: "odom"

@@ -1,19 +1,9 @@
-# NGPS ROS2 Python Dependencies
-
-# Core dependencies
 torch>=1.9.0
 torchvision>=0.10.0
 opencv-python>=4.5.0
 numpy>=1.21.0
 Pillow>=8.0.0
 
-# LightGlue dependencies
 lightglue @ git+https://github.com/snktshrma272/LightGlue.git
 
-# ROS2 dependencies (installed via apt)
-# rclpy
-# sensor_msgs
-# geometry_msgs
-# std_msgs
-# cv_bridge
-# image_transport
+pyproj>=3.0.0

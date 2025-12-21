@@ -2,7 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, NavSatFix
 from geometry_msgs.msg import PoseStamped, PointStamped
 from std_msgs.msg import Float64, Header
 from cv_bridge import CvBridge
@@ -15,6 +15,7 @@ from lightglue.utils import load_image_arr, rbd
 import gc
 import os
 from pathlib import Path
+from . import transformations as tf_
 
 
 class NGPSLocalizationNode(Node):
@@ -51,6 +52,8 @@ class NGPSLocalizationNode(Node):
         self.position_pub = self.create_publisher(PointStamped, 'ngps/position', 10)
         self.rotation_pub = self.create_publisher(Float64, 'ngps/rotation', 10)
         self.debug_image_pub = self.create_publisher(Image, 'ngps/debug_image', 10)
+        self.global_position_pub = self.create_publisher(NavSatFix, 'ngps/global_position', 10)
+        self.ecef_position_pub = self.create_publisher(PointStamped, 'ngps/ecef_position', 10)
         
         self.image_sub = self.create_subscription(
             Image,
@@ -70,6 +73,14 @@ class NGPSLocalizationNode(Node):
         self.declare_parameter('enable_rotation_smoothing', True)
         self.declare_parameter('enable_rotation_validation', True)
         self.declare_parameter('frame_id', 'map')
+        
+        # Georeferencing parameters for reference image
+        self.declare_parameter('reference_min_lon', 0.0)
+        self.declare_parameter('reference_min_lat', 0.0)
+        self.declare_parameter('reference_max_lon', 0.0)
+        self.declare_parameter('reference_max_lat', 0.0)
+        self.declare_parameter('reference_altitude', 0.0)  # Altitude in meters (AGL or MSL)
+        self.declare_parameter('enable_global_coordinates', False)
         
         print('NGPS Localization Node initialized')
     
@@ -375,6 +386,76 @@ class NGPSLocalizationNode(Node):
         rotation_msg = Float64()
         rotation_msg.data = self.theta_deg
         self.rotation_pub.publish(rotation_msg)
+        
+        enable_global = self.get_parameter('enable_global_coordinates').get_parameter_value().bool_value
+        if enable_global:
+            self._publish_global_coordinates(current_time)
+    
+    def _publish_global_coordinates(self, current_time):
+        try:
+            min_lon = self.get_parameter('reference_min_lon').get_parameter_value().double_value
+            min_lat = self.get_parameter('reference_min_lat').get_parameter_value().double_value
+            max_lon = self.get_parameter('reference_max_lon').get_parameter_value().double_value
+            max_lat = self.get_parameter('reference_max_lat').get_parameter_value().double_value
+            ref_alt = self.get_parameter('reference_altitude').get_parameter_value().double_value
+            
+            if min_lon == 0.0 and min_lat == 0.0 and max_lon == 0.0 and max_lat == 0.0:
+                if not hasattr(self, '_georef_warned'):
+                    self.get_logger().debug(
+                        "Global coordinates disabled: reference image georeferencing not configured. "
+                        "Set reference_min_lon, reference_min_lat, reference_max_lon, reference_max_lat parameters."
+                    )
+                    self._georef_warned = True
+                return
+            
+            if min_lon >= max_lon or min_lat >= max_lat:
+                if not hasattr(self, '_bbox_warned'):
+                    self.get_logger().warn(
+                        f"Invalid georeferencing bounding box: "
+                        f"min_lon={min_lon}, max_lon={max_lon}, min_lat={min_lat}, max_lat={max_lat}"
+                    )
+                    self._bbox_warned = True
+                return
+            
+            lon, lat = tf_.pixel_to_geodetic(
+                pixel_x=self.base_x,
+                pixel_y=self.base_y,
+                image_width=self.w,
+                image_height=self.h,
+                min_lon=min_lon,
+                min_lat=min_lat,
+                max_lon=max_lon,
+                max_lat=max_lat,
+            )
+            
+            navsat_msg = NavSatFix()
+            navsat_msg.header.stamp = current_time
+            navsat_msg.header.frame_id = "earth"
+            navsat_msg.latitude = lat
+            navsat_msg.longitude = lon
+            navsat_msg.altitude = ref_alt
+            navsat_msg.status.status = NavSatFix.STATUS_FIX
+            navsat_msg.status.service = NavSatFix.SERVICE_GPS
+            navsat_msg.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
+            self.global_position_pub.publish(navsat_msg)
+            
+            ecef_x, ecef_y, ecef_z = tf_.wgs84_to_ecef(lon, lat, ref_alt)
+            ecef_msg = PointStamped()
+            ecef_msg.header.stamp = current_time
+            ecef_msg.header.frame_id = "earth"
+            ecef_msg.point.x = ecef_x
+            ecef_msg.point.y = ecef_y
+            ecef_msg.point.z = ecef_z
+            self.ecef_position_pub.publish(ecef_msg)
+            
+            if self.frame_count % 50 == 0:
+                self.get_logger().info(
+                    f"Global position: lat={lat:.6f}, lon={lon:.6f}, "
+                    f"ECEF=({ecef_x:.2f}, {ecef_y:.2f}, {ecef_z:.2f})"
+                )
+                
+        except Exception as e:
+            self.get_logger().warn(f"Failed to publish global coordinates: {e}")
     
     def publish_debug_image(self, img_kl, frame, m_kpts0, m_kpts1, dst):
         try:
